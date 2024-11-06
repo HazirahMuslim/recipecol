@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Recipe Viewer</title>
+  <script src="https://cdn.jsdelivr.net/npm/vue@2"></script>
+  <style>
+    .accordion-title {
+      cursor: pointer;
+      background-color: #f1f1f1;
+      padding: 10px;
+      text-align: left;
+      font-weight: bold;
+      border: 1px solid #ddd;
+      margin-bottom: 5px;
+    }
+
+    .accordion-content {
+      padding: 10px;
+      border: 1px solid #ddd;
+      margin-bottom: 10px;
+      display: none; /* Initially hidden */
+    }
+
+    .accordion-content.show {
+      display: block;
+    }
+
+    .search-bar {
+      margin-bottom: 20px;
+      padding: 10px;
+      width: 100%;
+      max-width: 400px;
+      border: 1px solid #ddd;
+      font-size: 16px;
+    }
+
+    .tabs {
+      display: flex;
+      cursor: pointer;
+      margin-bottom: 20px;
+    }
+
+    .tab {
+      padding: 10px;
+      background-color: #f1f1f1;
+      margin-right: 10px;
+      border: 1px solid #ddd;
+    }
+
+    .tab.active {
+      background-color: #ddd;
+    }
+
+    button {
+      margin-left: 10px;
+      padding: 5px 10px;
+      cursor: pointer;
+      border: none;
+      font-weight: bold;
+    }
+
+    /* Save Recipe Button (Gray) */
+    .save-btn {
+      background-color: #B0B0B0;
+      color: white;
+    }
+
+    .save-btn:hover {
+      background-color: #8c8c8c;
+    }
+
+    /* Remove Recipe Button (Red) */
+    .remove-btn {
+      background-color: #f44336;
+      color: white;
+    }
+
+    .remove-btn:hover {
+      background-color: #d32f2f;
+    }
+
+  </style>
+</head>
+<body>
+  <div id="app">
+    <h1>Recipe Collection</h1>
+
+    <!-- Tabs for Search and My Collection -->
+    <div class="tabs">
+      <div class="tab" :class="{ active: activeTab === 'search' }" @click="switchTab('search')">
+        Search Recipes
+      </div>
+      <div class="tab" :class="{ active: activeTab === 'myCollection' }" @click="switchTab('myCollection')">
+        My Collection
+      </div>
+    </div>
+
+    <div v-if="loading">Loading data...</div>
+    <div v-if="error">{{ error }}</div>
+
+    <!-- Search Tab Content -->
+    <div v-if="activeTab === 'search'">
+      <input type="text" v-model="searchQuery" placeholder="Search recipes..." class="search-bar" />
+
+      <ul v-if="!loading && !error">
+        <li v-for="(recipe, index) in filteredRecipes" :key="index">
+          
+          <!-- Recipe Title (Click to toggle details) -->
+          <div class="accordion-title" @click="toggleAccordion(index)">
+            {{ recipe.name || 'Unnamed Recipe' }}
+            <button class="save-btn" @click.stop="saveRecipe(recipe)">Save Recipe</button>
+          </div>
+
+          <!-- Recipe Details (Toggle visibility based on index) -->
+          <div class="accordion-content" :class="{ show: isAccordionOpen(index) }">
+            <!-- Display image if available -->
+            <img v-if="recipe.image && recipe.image.length > 0" :src="recipe.image[0]" alt="Recipe image" style="max-width: 300px;">
+
+            <!-- Display author if available -->
+            <p v-if="recipe.author && recipe.author.name">
+              <strong>Author:</strong> {{ recipe.author.name }}
+            </p>
+
+            <!-- Render description with HTML entities -->
+            <p><strong>Description:</strong> <span v-html="recipe.description || 'No description available'"></span></p>
+
+            <p><strong>Preparation Time:</strong> {{ recipe.prepTime || 'N/A' }}</p>
+            <p><strong>Total Time:</strong> {{ recipe.totalTime || 'N/A' }}</p>
+
+            <h3>Ingredients</h3>
+            <ul v-if="recipe.recipeIngredient && recipe.recipeIngredient.length > 0">
+              <li v-for="ingredient in recipe.recipeIngredient" :key="ingredient">
+                {{ ingredient }}
+              </li>
+            </ul>
+
+            <!-- Render instructions based on type -->
+            <h3 v-if="recipe.recipeInstructions">Instructions</h3>
+
+            <!-- If instructions are a string (Variation 1) -->
+            <p v-if="typeof recipe.recipeInstructions === 'string'" v-html="formatInstructions(recipe.recipeInstructions)">
+            </p>
+
+            <!-- If instructions are an array of steps (Variation 2) -->
+            <ol v-if="Array.isArray(recipe.recipeInstructions)">
+              <li v-for="(step, stepIndex) in recipe.recipeInstructions" :key="stepIndex">
+                <a v-if="step.url" :href="step.url" target="_blank">{{ step.text }}</a>
+                <span v-else>{{ step.text }}</span>
+              </li>
+            </ol>
+          </div>
+        </li>
+      </ul>
+    </div>
+
+    <!-- My Collection Tab Content -->
+    <div v-if="activeTab === 'myCollection'">
+      <ul v-if="savedRecipes.length > 0">
+        <li v-for="(recipe, index) in savedRecipes" :key="index">
+          <div class="accordion-title" @click="toggleAccordion(index)">
+            {{ recipe.name || 'Unnamed Recipe' }}
+            <!-- Remove Recipe button -->
+            <button class="remove-btn" @click.stop="removeRecipe(index)">Remove Recipe</button>
+          </div>
+
+          <div class="accordion-content" :class="{ show: isAccordionOpen(index) }">
+            <img v-if="recipe.image && recipe.image.length > 0" :src="recipe.image[0]" alt="Recipe image" style="max-width: 300px;">
+            <p><strong>Description:</strong> <span v-html="recipe.description || 'No description available'"></span></p>
+            <p><strong>Preparation Time:</strong> {{ recipe.prepTime || 'N/A' }}</p>
+            <p><strong>Total Time:</strong> {{ recipe.totalTime || 'N/A' }}</p>
+            <h3>Ingredients</h3>
+            <ul>
+              <li v-for="ingredient in recipe.recipeIngredient" :key="ingredient">{{ ingredient }}</li>
+            </ul>
+            <h3>Instructions</h3>
+            <p v-if="typeof recipe.recipeInstructions === 'string'" v-html="formatInstructions(recipe.recipeInstructions)">
+            </p>
+            <ol v-if="Array.isArray(recipe.recipeInstructions)">
+              <li v-for="(step, stepIndex) in recipe.recipeInstructions" :key="stepIndex">
+                <a v-if="step.url" :href="step.url" target="_blank">{{ step.text }}</a>
+                <span v-else>{{ step.text }}</span>
+              </li>
+            </ol>
+          </div>
+        </li>
+      </ul>
+      <p v-else>No saved recipes.</p>
+    </div>
+
+  </div>
+
+  <script>
+    new Vue({
+      el: '#app',
+      data: {
+        recipes: [],
+        loading: true,
+        error: null,
+        openAccordionIndex: null,
+        searchQuery: '',
+        activeTab: 'search', // Track which tab is active
+        savedRecipes: JSON.parse(localStorage.getItem('savedRecipes')) || [] // Load saved recipes from localStorage
+      },
+      computed: {
+        filteredRecipes() {
+          const query = this.searchQuery.toLowerCase();
+          return this.recipes.filter(recipe => {
+            return (
+              (recipe.name && recipe.name.toLowerCase().includes(query)) ||
+              (recipe.description && recipe.description.toLowerCase().includes(query))
+            );
+          });
+        }
+      },
+      methods: {
+        formatInstructions(instructionText) {
+          return instructionText.replace(/\n/g, '<br>');
+        },
+
+        toggleAccordion(index) {
+          this.openAccordionIndex = this.openAccordionIndex === index ? null : index;
+        },
+
+        isAccordionOpen(index) {
+          return this.openAccordionIndex === index;
+        },
+
+        saveRecipe(recipe) {
+          // Check if the recipe is already saved
+          const alreadySaved = this.savedRecipes.some(savedRecipe => savedRecipe.name === recipe.name);
+          if (!alreadySaved) {
+            this.savedRecipes.push(recipe);
+            localStorage.setItem('savedRecipes', JSON.stringify(this.savedRecipes));
+          }
+        },
+
+        removeRecipe(index) {
+          // Remove the recipe from saved recipes array and localStorage
+          this.savedRecipes.splice(index, 1);
+          localStorage.setItem('savedRecipes', JSON.stringify(this.savedRecipes));
+        },
+
+        switchTab(tab) {
+          this.activeTab = tab;
+        }
+      },
+      created() {
+        fetch('https://raw.githubusercontent.com/micahcochran/json-cookbook/refs/heads/main/cookbook-100.json')
+          .then(response => {
+            if (!response.ok) throw new Error('Network response was not ok');
+            return response.json();
+          })
+          .then(data => {
+            this.recipes = Array.isArray(data) ? data : [];
+            this.loading = false;
+          })
+          .catch(error => {
+            this.error = 'Failed to load data: ' + error.message;
+            this.loading = false;
+          });
+      }
+    });
+  </script>
+</body>
+</html>
